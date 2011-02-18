@@ -3,12 +3,13 @@
 # Steve Ivy <steveivy@gmail.com>
 # http://monkinetic.com
 
-from socket import *
+import random
+import socket
 
 # Sends statistics to the stats daemon over UDP
 class Statsd(object):
     
-    def __init__(self, host='localhost', port=8125):
+    def __init__(self, host='localhost', port=8125, prefix=None, enabled=True):
         """
         Create a new Statsd client.
         * host: the host where statsd is listening, defaults to localhost
@@ -19,6 +20,8 @@ class Statsd(object):
         """
         self.host = host
         self.port = port
+        self.prefix = prefix
+        self.enabled = enabled
     
     def timing(self, stat, time, sample_rate=1):
         """
@@ -61,26 +64,28 @@ class Statsd(object):
         """
         Squirt the metrics over UDP
         """
-        addr=(self.host, self.port)
+        if not self.enabled:
+            return
+        
+        addr = (self.host, self.port)
         
         sampled_data = {}
         
-        if(sample_rate < 1):
-            import random
+        if sample_rate < 1:
             if random.random() <= sample_rate:
-                for stat in data.keys():
-                    value = data[stat]
-                    sampled_data[stat] = "%s|@%s" %(value, sample_rate)
+                for stat, value in data.iteritems():
+                    sampled_data[stat] = "%s|@%s" % (value, sample_rate)
         else:
-            sampled_data=data
+            sampled_data = data
         
-        udp_sock = socket(AF_INET, SOCK_DGRAM)
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            for stat in sampled_data.keys():
-                value = data[stat]
-                send_data = "%s:%s" % (stat, value)
+            for path, value in sampled_data.iteritems():
+                if self.prefix:
+                    path = "%s.%s" % (self.prefix, path)
+                send_data = "%s:%s" % (path, value)
                 udp_sock.sendto(send_data, addr)
-        except:
+        except Exception:
             import sys
             from pprint import pprint
             print "Unexpected error:", pprint(sys.exc_info())
